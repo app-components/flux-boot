@@ -2,7 +2,7 @@
 
 **Date:** 2025-11-06  
 **Status:** Accepted  
-**Context:** Governs all cluster-management repositories
+**Scope:** Governs all cluster-management repositories
 
 ## Problem Statement and Motivation
 

@@ -1,8 +1,7 @@
 # ADR-001: Select FluxCD as the GitOps Engine 
 
 **Date:** 2025-11-06  
-**Status:** Accepted  
-**Context:** Bootstrap layer
+**Status:** Accepted
 
 ## Context
 
