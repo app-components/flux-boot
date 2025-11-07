@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: flux-system
+
+resources:
+  - namespace.yaml
+  - upstream/manifests/policies.yaml
+  - upstream/manifests/rbac.yaml
+  - upstream/manifests/source-controller.yaml
+  - upstream/manifests/source-watcher.yaml
+  - upstream/manifests/kustomize-controller.yaml
+  - upstream/manifests/notification-controller.yaml
+  - upstream/manifests/image-automation-controller.yaml
+  - upstream/manifests/image-reflector-controller.yaml
+
+

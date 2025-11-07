@@ -1,0 +1,16 @@
+apiVersion: vendir.k14s.io/v1alpha1
+kind: Config
+
+directories:
+  - path: upstream
+    contents:
+      - path: manifests
+        extract: true
+        githubRelease:
+          slug: fluxcd/flux2
+          tag: v2.7.3
+          disableAutoChecksumValidation: true
+          assetNames:
+            - manifests.tar.gz
+          unpackArchive:
+            path: manifests.tar.gz
