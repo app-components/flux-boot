@@ -8,7 +8,7 @@ vendir sync
 VERSION=$(yq '.directories[] | select(.path == "upstream") | .contents[] | select(.path == "manifests") | .githubRelease.tag' vendir.lock.yml)
 echo "Building flux-boot version $VERSION"
 
-FLUX_YAML="release/gotk-components.yaml"
+FLUX_YAML="latest/gotk-components.yaml"
 
 # Build the bootstrap manifest
 echo "Running kustomize build..."
