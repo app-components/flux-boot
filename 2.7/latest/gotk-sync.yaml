@@ -9,11 +9,24 @@ spec:
   ref:
     branch: main
   url: https://github.com/app-components/flux-boot.git
-  include:
-    - repository:
-        name: flux-system  # Reference as an object, not a string
-      fromPath: 2.7/latest
-      toPath: .
+
+---
+apiVersion: source.extensions.fluxcd.io/v1beta1
+kind: ArtifactGenerator
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  sources:
+    - alias: repo
+      kind: GitRepository
+      name: flux-system
+  artifacts:
+    - name: flux-system
+      originRevision: "@repo"
+      copy:
+        - from: "@repo/2.7/latest/**"
+          to: "@artifact/"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -25,5 +38,5 @@ spec:
   path: ./
   prune: true
   sourceRef:
-    kind: GitRepository
+    kind: ExternalArtifact
     name: flux-system
