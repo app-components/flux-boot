@@ -8,9 +8,12 @@ spec:
   interval: 1m0s
   ref:
     branch: main
-  url:  https://github.com/app-components/flux-boot.git
-  sparseCheckout:
-    - "2.7/latest"
+  url: https://github.com/app-components/flux-boot.git
+  include:
+    - repository:
+        name: flux-system  # Reference as an object, not a string
+      fromPath: 2.7/latest
+      toPath: .
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -19,7 +22,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m0s
-  path: "./2.7/latest"
+  path: ./
   prune: true
   sourceRef:
     kind: GitRepository
