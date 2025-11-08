@@ -10,7 +10,7 @@ spec:
     branch: main
   url: https://github.com/app-components/flux-boot.git
   sparseCheckout:
-    - "releases/2.7/latest"
+    - releases/2.7/latest
 
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
