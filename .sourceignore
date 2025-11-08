@@ -1,0 +1,5 @@
+# Exclude everything by default
+/*
+
+# Allow the releases directory
+!/releases/
