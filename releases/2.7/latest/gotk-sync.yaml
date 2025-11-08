@@ -9,11 +9,8 @@ spec:
   ref:
     branch: main
   url: https://github.com/app-components/flux-boot.git
-  ignore: |
-    # exclude all
-    /*
-    # include gitops dir
-    !/releases/2.7/latest
+  sparseCheckout:
+    - "releases/2.7/latest"
 
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
