@@ -1,119 +1,153 @@
-# ADR-003: Flux Versioning Policy — Pin by Track
+# ADR-003: Flux Versioning Policy — Pin by Track, Reconcile by Patch
 
 **Date:** 2025-11-06  
 **Status:** Accepted  
+**Context:** `flux-boot` repository
 
+---
 
 ## Context and Problem Statement
 
-The `flux-boot` project defines the declarative bootstrap layer that installs and maintains Flux itself.  
-It forms the foundation of the GitOps control plane: once applied, the cluster continuously reconciles its own state from Git.  
+The `flux-boot` project defines the declarative bootstrap layer that installs and maintains Flux itself — the foundation of the GitOps control plane.  
+To keep clusters **deterministic, auditable, and secure**, the bootstrap layer must evolve in a **controlled, track-based** manner.
 
-To preserve **reproducibility, auditability, and security**, this bootstrap layer must evolve in a controlled and predictable way.  
-Without a clear versioning and upgrade policy, clusters can silently drift between patch levels of Flux or its controllers, leading to inconsistent behavior even when configuration appears identical.
+Without explicit versioning discipline, clusters can silently drift between controller versions or patch levels, leading to inconsistent behavior even when configuration appears identical.  
+The repository therefore requires a clear policy for:
 
-To prevent such drift, `flux-boot` must define:
+- how Flux versions are represented and released,
+- which updates occur automatically,
+- which require human intent, and
+- how reconciliation remains safe and predictable.
 
-- how it mirrors upstream Flux releases,  
-- which updates occur automatically,  
-- which require human intent, and  
-- how all upgrades remain deterministic and reviewable.  
+---
 
 ## Decision
 
-`flux-boot` mirrors the **FluxCD release cadence and version numbers**, adopting the same `major.minor.patch` scheme (e.g., `2.7.1`).  
-Each upstream Flux release is rendered into a static, reproducible YAML manifest stored under `/release`.
-
-Automatic upgrades occur **only within a version track** (e.g., `2.7.x`).  
-Advancing to a new minor (`2.8.x`) or major (`3.x`) release requires **explicit intent**, such as editing the manifest reference or re-bootstrapping the Flux layer.
+`flux-boot` mirrors the **FluxCD release cadence and version numbers**, adopting the same `major.minor.patch` scheme (for example, `2.7.3`).  
+Each upstream Flux release is rendered into a static, reproducible YAML manifest stored under `/release/manifests`.  
+Automatic upgrades occur **only within a version track** (for example, `2.7.x`).  
+Advancing to a new minor (`2.8.x`) or major (`3.x`) line requires **explicit human action**.
 
 | Version Type | Example | Change Scope | Upgrade Mechanism |
 |---------------|----------|--------------|------------------|
-| **Patch (x.y.Z)** | 2.7.1 → 2.7.2 | Security fixes / controller updates | Automatic via Flux reconciliation (`flux-2.7.x.yaml`) |
-| **Minor (x.Y.z)** | 2.7 → 2.8 | Feature additions / dependency bumps | Manual update or re-bootstrap |
+| **Patch (x.y.Z)** | 2.7.2 → 2.7.3 | Security fixes / controller updates | Automatic via the track bundle (`/release/tracks/2.7/`) |
+| **Minor (x.Y.z)** | 2.7 → 2.8 | New features / non-breaking updates | Manual operator promotion |
 | **Major (X.y.z)** | 2.x → 3.0 | Breaking or architectural change | Manual migration guided by release notes |
 
-### Release Directory Structure
+---
+
+## Repository Layout
 
 ```
 release/
-├── manifests/      # Immutable, version-specific manifests
-│   ├── flux-2.7.1.yaml
+├── manifests/        # Immutable version-specific Flux manifests
 │   ├── flux-2.7.2.yaml
+│   ├── flux-2.7.3.yaml
 │   └── flux-2.8.0.yaml
-└── tracks/         # Rolling patch references (latest within a version line)
-    ├── flux-2.7.x.yaml
-    └── flux-2.8.x.yaml
+├── driftguard/       # Drift guard definitions (self-reconciliation)
+│   ├── flux-2.7.yaml
+│   └── flux-2.8.yaml
+└── tracks/           # Kustomize bundles defining each version line
+    ├── 2.7/
+    │   └── kustomization.yaml
+    └── 2.8/
+        └── kustomization.yaml
 ```
 
-- **`/release/manifests`** contains immutable YAMLs — each bound to a specific Flux version.  
-- **`/release/tracks`** contains rolling patch references that always point to the latest patch within a given line (e.g., `flux-2.7.x.yaml`).  
-- All manifests are produced using the *Render Once, Reconcile Forever* process described in [ADR-002](./002-render-once-reconcile-forever.md).  
+### Example: `/release/tracks/2.7/kustomization.yaml`
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../manifests/flux-2.7.3.yaml
+  - ../../driftguard/flux-2.7.yaml
+```
+
+This allows users or automation to bootstrap from a single remote location:
+
+```bash
+kubectl apply -k https://github.com/app-components/flux-boot.git/release/tracks/2.7/
+```
+
+That one command installs the latest patch in the 2.7 line **plus** the drift guard that keeps Flux self-reconciling.
+
+When maintainers release `flux-2.7.4.yaml`, the only change required is updating this `kustomization.yaml` to reference the new manifest.  
+Clusters tracking `2.7/` will automatically reconcile to the new patch version.
+
+---
 
 ## Upgrade Philosophy
 
-1. **Pin by track.**  
-   Clusters pin to a track (e.g., `flux-2.7.x`) to automatically receive safe patch updates.
+1. **Pin by Track** – Operators pin clusters to a minor line (for example, `2.7/`), ensuring automatic patch updates but no implicit minor jumps.
+2. **Reconcile, Don’t Mutate** – Flux never self-updates arbitrarily; reconciliation simply reapplies declarative manifests from Git.
+3. **Intent for Larger Changes** – Moving to a new minor or major line requires explicit human action.
+4. **Declarative Rollback** – Any older manifest can be applied directly from `/release/manifests` for deterministic rollback.
 
-2. **Reconcile, don’t mutate.**  
-   The system never self-updates; reconciliation simply re-applies declarative manifests.
-
-3. **Intent for larger changes.**  
-   Moving to a new minor (`flux-2.8.x`) or major (`flux-3.x`) version requires deliberate human action.
-
-4. **Declarative rollback.**  
-   Any earlier manifest from `/release/manifests` can be re-applied to restore the previous state.
+---
 
 ## Rationale
 
 | Concern | Policy Response |
 |----------|----------------|
-| **Determinism** | Immutable YAMLs ensure reproducible Flux bootstraps across environments and time. |
-| **Security** | Automatic patch reconciliation ensures timely CVE fixes and stable controller updates. |
-| **Auditability** | Each release has a unique Git tag and verifiable manifest hash. |
-| **Predictability** | Version numbers mirror upstream Flux; no hidden upgrades. |
-| **Air-Gapped Operation** | All YAMLs are self-contained; no runtime network access required. |
-| **Operational Simplicity** | Reconciliation behavior is driven purely by Git state. |
+| **Determinism** | Immutable manifests guarantee identical rebuilds of any historical Flux version. |
+| **Security** | Automatic patch reconciliation within a track ensures timely CVE fixes. |
+| **Auditability** | Every manifest is tagged, committed, and verifiable in Git. |
+| **Predictability** | Tracks define exactly what version a cluster runs — no hidden upgrades. |
+| **Air-gapped Operation** | YAMLs are static; no runtime network fetches required. |
+| **Operational Simplicity** | CI promotes new patches by editing a single file per track. |
+
+---
 
 ## Responsibilities
 
 | Actor | Responsibility |
 |-------|----------------|
-| **Maintainers** | Mirror upstream Flux releases, render and commit immutable YAMLs under `/release/manifests`, update `/release/tracks/flux-x.y.x.yaml`, and tag Git versions. |
-| **Cluster Operators** | Pin to a track (e.g., `flux-2.7.x`), accept automatic patch reconciliation, and manually promote to new minor/major versions when appropriate. |
-| **Flux Controllers** | Reconcile only what Git declares — never auto-advance beyond the pinned track. |
+| **Maintainers** | Render and commit immutable manifests under `/release/manifests`, update `/release/tracks/<line>/kustomization.yaml`, and tag each release. |
+| **Cluster Operators** | Bootstrap or pin to a track (for example, `2.7/`), allow automatic patch reconciliation, and manually promote to new minor or major lines when desired. |
+| **Flux Controllers** | Reconcile only the resources defined in Git; never cross version lines autonomously. |
+
+---
 
 ## Security Alignment
 
-Patch updates are **security-critical** and must flow automatically through the tracking files in `/release/tracks`.  
-Disabling patch reconciliation undermines the project’s security posture and is considered non-compliant.
+Patch updates within a track are **security-critical** and must flow automatically through the Kustomize bundle mechanism.  
+Clusters that remain on an older patch after a new one is published are considered **non-compliant**.
 
-See [ADR-004 – Security and Auto-Patching Policy](./004-security-and-auto-patching-policy.md) for enforcement and automation details.
+For detailed enforcement and automation policy, see [ADR-004 – Self-Reconciling Bootstrap and Drift Guard Pattern](./004-self-reconciling-bootstrap.md).
+
+---
 
 ## Consequences
 
 ### Positive
-- Automatic patch upgrades within each track  
-- Immutable, auditable manifests for every version  
-- Deterministic rebuilds and consistent GitOps behavior  
-- Secure and air-gap-friendly by design  
+- Automatic patch updates within each track
+- Immutable, auditable manifests for every version
+- Deterministic rebuilds and consistent GitOps behavior
+- Fully air-gap compatible
+- Easy CI/CD automation (edit one line per patch release)
 
 ### Negative
-- Manual effort required for minor/major upgrades  
-- Maintenance overhead to update tracking files  
-- Slight delay in adopting new Flux features  
+- Manual promotion required for minor and major lines
+- Slightly more directory complexity
+- Operators must ensure track paths match their intended release
+
+---
 
 ## Relationship to Other ADRs
 
 | Related ADR | Relationship |
 |--------------|--------------|
-| **000 – Vision for Kubernetes Cluster Management** | Establishes the declarative, headless philosophy that underpins this policy. |
-| **001 – Select FluxCD as GitOps Engine** | Defines the reconciliation model mirrored here. |
-| **002 – Render Once, Reconcile Forever** | Describes the rendering process that produces these release YAMLs. |
-| **004 – Security and Auto-Patching Policy** | Expands on automation and compliance enforcement. |
+| **000 – Vision for Kubernetes Cluster Management** | Defines the headless, declarative philosophy that drives this policy. |
+| **001 – Select FluxCD as GitOps Engine** | Establishes Flux as the controller of record for all reconciliation. |
+| **002 – Render Once, Reconcile Forever** | Provides the rendering model that produces the release manifests. |
+| **004 – Self-Reconciling Bootstrap (Drift Guard Pattern)** | Implements continuous reconciliation for whichever track the cluster is pinned to. |
+
+---
 
 ## Summary
 
-`flux-boot` mirrors upstream Flux releases as static YAML manifests under `/release/manifests/`, with corresponding rolling patch references under `/release/tracks/`.  
-Clusters **pin to a track** (e.g., `flux-2.7.x`) to receive **automatic patch updates**, while minor and major upgrades require explicit human intent.  
-All releases are immutable, reproducible, and reconciled declaratively — ensuring secure, deterministic, and auditable upgrades consistent with ADR-000 through ADR-002.
+`flux-boot` mirrors upstream Flux releases as immutable YAML manifests in `/release/manifests`, with patch lines represented by **Kustomize tracks** under `/release/tracks/<minor>/`.  
+Each track bundles the latest manifest and its drift guard definition.  
+Clusters **pin to a track** to receive **automatic patch upgrades**, while **minor and major promotions** remain explicit and manual.  
+This model ensures that Flux upgrades are **predictable, secure, auditable, and entirely declarative**, fulfilling the goals set out in ADR-000 through ADR-002.
